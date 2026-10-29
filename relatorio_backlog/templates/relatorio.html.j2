@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backlog · {{ m.data.strftime('%d/%m/%Y') }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<!-- Chart.js 4.4.4 (MIT) embutido: o relatório abre offline, como anexo de e-mail ou em rede restrita -->
+<script>{{ chartjs | safe }}</script>
+<style>
+  /* Tema escuro como padrão da tela. Na impressão/PDF troca para o claro (economiza tinta e lê melhor no papel). */
+  :root {
+    color-scheme: dark;
+    --surface-0: #0e1116;     /* fundo da página */
+    --surface-1: #161a21;     /* cartões */
+    --surface-2: #1d222b;     /* destaque sutil */
+    --border: #262c36;
+    --grid: #222833;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #8f8e86;
+    --series-1: #3987e5;      /* entradas */
+    --series-2: #d95926;      /* fechados */
+    --seq-1: #184f95; --seq-2: #256abf; --seq-3: #3987e5; --seq-4: #86b6ef;  /* mais claro = mais tempo em aberto */
+    --good: #0ca30c; --good-text: #4cc94c;
+    --critical: #d03b3b; --critical-text: #ef7a7a;
+    --warning: #fab219; --warning-text: #fab219;
+    --accent: #9ec5f4;
+  }
+  @media print {
+    :root {
+      color-scheme: light;
+      --surface-0: #ffffff; --surface-1: #fcfcfb; --surface-2: #f4f3ef; --border: #e3e1da; --grid: #ebe9e3;
+      --text-primary: #0b0b0b; --text-secondary: #52514e; --text-muted: #7a7973;
+      --series-1: #2a78d6; --series-2: #eb6834;
+      --seq-1: #86b6ef; --seq-2: #5598e7; --seq-3: #2a78d6; --seq-4: #1c5cab;
+      --good-text: #006300; --critical-text: #b42c2c; --warning-text: #8a5a00; --accent: #0d366b;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    background: var(--surface-0); color: var(--text-primary);
+    line-height: 1.45; -webkit-font-smoothing: antialiased;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  .pagina { max-width: 1180px; margin: 0 auto; padding: 32px 24px 56px; }
+
+  header { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px;
+           border-bottom: 1px solid var(--border); padding-bottom: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+  .eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 12px; letter-spacing: .08em;
+             text-transform: uppercase; color: var(--text-muted); }
+  h1 { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; }
+  .meta { text-align: right; font-size: 13px; color: var(--text-secondary); }
+  .selo { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 12px;
+          padding: 4px 10px; border-radius: 999px; border: 1px solid currentColor; margin-bottom: 6px; }
+  .selo.ok { color: var(--good-text); } .selo.alerta { color: var(--warning-text); }
+
+  .alertas { background: var(--surface-1); border: 1px solid var(--border); border-left: 4px solid var(--warning);
+             border-radius: 8px; padding: 14px 18px; margin-bottom: 24px; }
+  .alertas h2 { font-size: 14px; margin-bottom: 6px; }
+  .alertas li { list-style: none; font-size: 14px; color: var(--text-secondary); padding: 3px 0 3px 22px; position: relative; }
+  .alertas li::before { position: absolute; left: 0; font-weight: 700; }
+  .alertas li.destaque::before { content: "▲"; color: var(--warning-text); font-size: 11px; top: 6px; }
+  .alertas li.aviso::before { content: "!"; color: var(--critical-text); left: 5px; }
+
+  .kpis { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .kpi { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .kpi .rotulo { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+  .kpi .valor { font-size: 34px; font-weight: 700; letter-spacing: -.02em; margin-top: 2px; }
+  .kpi.hero { background: linear-gradient(160deg, var(--surface-2), var(--surface-1)); }
+  .kpi.hero .valor { font-size: 52px; line-height: 1.05; }
+  .kpi .delta { font-size: 13px; font-weight: 600; margin-top: 4px; }
+  .delta.sobe { color: var(--critical-text); } .delta.desce { color: var(--good-text); } .delta.igual { color: var(--text-muted); }
+  .kpi .sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+  .grade { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .cartao { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+  .cartao.largo { grid-column: 1 / -1; }
+  .cartao h2 { font-size: 16px; font-weight: 600; }
+  .cartao .desc { font-size: 13px; color: var(--text-muted); margin: 2px 0 14px; }
+  .legenda { display: flex; gap: 16px; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+  .legenda span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+                          margin-right: 6px; vertical-align: -1px; background: var(--c); }
+  .area-grafico { position: relative; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: right; font-weight: 600; font-size: 12px; color: var(--text-muted); text-transform: uppercase;
+       letter-spacing: .04em; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  th:first-child, td:first-child { text-align: left; }
+  td { text-align: right; padding: 9px 10px; border-bottom: 1px solid var(--grid); }
+  tr:last-child td { border-bottom: none; }
+  tfoot td { font-weight: 700; border-top: 2px solid var(--border); }
+  td .seta { font-size: 10px; margin-right: 3px; }
+
+  .abas { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .abas button { font: inherit; font-size: 12px; font-weight: 500; padding: 5px 11px; border-radius: 999px; cursor: pointer;
+                 border: 1px solid var(--border); background: transparent; color: var(--text-secondary); }
+  .abas button[aria-pressed="true"] { background: var(--text-primary); color: var(--surface-1); border-color: var(--text-primary); }
+
+  footer { margin-top: 28px; font-size: 12px; color: var(--text-muted); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+
+  @media (max-width: 900px) {
+    .kpis { grid-template-columns: 1fr 1fr; } .kpi.hero { grid-column: 1 / -1; }
+    .grade { grid-template-columns: 1fr; }
+  }
+  @media print {
+    body { background: #fff; } .pagina { padding: 0; }
+    .cartao, .kpi, .alertas { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="pagina">
+
+<header>
+  <div>
+    <div class="eyebrow">Central de Atendimento · Relatório diário</div>
+    <h1>Backlog de reclamações</h1>
+  </div>
+  <div class="meta">
+    <div class="selo {{ 'ok' if diag.status == 'OK' else 'alerta' }}">
+      {{ '✓ Sem pendências' if diag.status == 'OK' else '▲ Pontos de atenção' }}
+    </div>
+    <div>Referência: <strong>{{ m.data.strftime('%d/%m/%Y') }}</strong> · comparado a {{ m.data_anterior.strftime('%d/%m') }}</div>
+  </div>
+</header>
+
+{% if diag.destaques or diag.avisos %}
+<section class="alertas" aria-label="Pontos de atenção">
+  <h2>O que merece atenção hoje</h2>
+  <ul>
+    {% for d in diag.destaques %}<li class="destaque">{{ d }}</li>{% endfor %}
+    {% for a in diag.avisos %}<li class="aviso">{{ a }}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="kpis">
+  <div class="kpi hero">
+    <div class="rotulo">Backlog em aberto</div>
+    <div class="valor num">{{ fmt(m.backlog_hoje) }}</div>
+    <div class="delta num {{ 'sobe' if m.variacao > 0 else ('desce' if m.variacao < 0 else 'igual') }}">
+      {% if m.variacao > 0 %}▲{% elif m.variacao < 0 %}▼{% else %}●{% endif %}
+      {{ '%+d'|format(m.variacao) }} casos ({{ dec(m.variacao_pct, sinal=True) }}%)
+      <span style="font-weight:400;color:var(--text-muted)">vs. {{ fmt(m.backlog_ontem) }}</span>
+    </div>
+    <div class="area-grafico" style="height:48px;margin-top:8px"><canvas id="sparkBacklog" role="img" aria-label="Evolução do backlog nos últimos dias"></canvas></div>
+  </div>
+  <div class="kpi">
+    <div class="rotulo">Entradas</div>
+    <div class="valor num" style="color:var(--text-primary)">{{ fmt(m.entradas) }}</div>
+    <div class="sub">casos novos no período</div>
+  </div>
+  <div class="kpi">
+    <div class="rotulo">Fechados</div>
+    <div class="valor num">{{ fmt(m.fechados) }}</div>
+    <div class="sub">casos encerrados no período</div>
+  </div>
+  <div class="kpi">
+    <div class="rotulo">Saldo do dia</div>
+    {% set saldo = m.entradas - m.fechados %}
+    <div class="valor num">{{ '%+d'|format(saldo) }}</div>
+    <div class="sub">{{ 'entrou mais do que saiu' if saldo > 0 else ('saiu mais do que entrou' if saldo < 0 else 'entradas = fechados') }}</div>
+  </div>
+  <div class="kpi">
+    <div class="rotulo">Tempo médio</div>
+    <div class="valor num">{{ dec(m.idade_media) }}<span style="font-size:16px;font-weight:500"> dias</span></div>
+    <div class="sub">dos casos em aberto · {{ m.casos_criticos }} há mais de {{ idade_critica }} dias</div>
+  </div>
+</section>
+
+<section class="grade">
+  <div class="cartao largo">
+    <h2>Entradas e fechados por canal</h2>
+    <p class="desc">Onde o backlog ganhou e perdeu casos no período. Canais ordenados pelo tamanho do backlog.</p>
+    <div class="legenda"><span style="--c:var(--series-1)">Entradas</span><span style="--c:var(--series-2)">Fechados</span></div>
+    <div class="area-grafico" style="height: {{ 60 + 34 * m.canais|length }}px">
+      <canvas id="graficoCanais" role="img" aria-label="Entradas e fechados por canal; os valores estão na tabela abaixo"></canvas>
+    </div>
+  </div>
+
+  <div class="cartao largo">
+    <h2>Backlog por canal</h2>
+    <p class="desc">Comparação com o dia anterior. Alta no backlog aparece em vermelho; queda, em verde.</p>
+    <table>
+      <thead><tr><th>Canal</th><th>Backlog hoje</th><th>Dia anterior</th><th>Variação</th><th>Entradas</th><th>Fechados</th></tr></thead>
+      <tbody>
+      {% for l in m.canais %}
+        <tr>
+          <td>{{ l.canal }}</td>
+          <td class="num"><strong>{{ fmt(l.backlog_hoje) }}</strong></td>
+          <td class="num">{{ fmt(l.backlog_ontem) }}</td>
+          <td class="num delta {{ 'sobe' if l.variacao > 0 else ('desce' if l.variacao < 0 else 'igual') }}">
+            {% if l.variacao > 0 %}<span class="seta">▲</span>{% elif l.variacao < 0 %}<span class="seta">▼</span>{% endif %}{{ '%+d'|format(l.variacao) }}
+            {% if l.variacao_pct is not none %}<span style="color:var(--text-muted);font-weight:400">({{ '%+.0f'|format(l.variacao_pct) }}%)</span>{% endif %}
+          </td>
+          <td class="num">{{ fmt(l.entradas) }}</td>
+          <td class="num">{{ fmt(l.fechados) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+      <tfoot><tr>
+        <td>Total</td><td class="num">{{ fmt(m.backlog_hoje) }}</td><td class="num">{{ fmt(m.backlog_ontem) }}</td>
+        <td class="num">{{ '%+d'|format(m.variacao) }}</td><td class="num">{{ fmt(m.entradas) }}</td><td class="num">{{ fmt(m.fechados) }}</td>
+      </tr></tfoot>
+    </table>
+  </div>
+
+  <div class="cartao">
+    <h2>Tendência: entradas × fechados</h2>
+    <p class="desc">Últimos {{ serie|length }} dias úteis registrados.</p>
+    <div class="legenda"><span style="--c:var(--series-1)">Entradas</span><span style="--c:var(--series-2)">Fechados</span></div>
+    <div class="area-grafico" style="height:240px"><canvas id="graficoTendencia" role="img" aria-label="Entradas e fechados por dia"></canvas></div>
+  </div>
+
+  <div class="cartao">
+    <h2>Tempo em aberto dos casos</h2>
+    <p class="desc">Quantos dias cada caso do backlog está aguardando solução.</p>
+    <div class="area-grafico" style="height:262px"><canvas id="graficoIdade" role="img" aria-label="Casos por faixa de tempo em aberto"></canvas></div>
+  </div>
+
+  <div class="cartao largo">
+    <h2>Principais assuntos no backlog</h2>
+    <p class="desc">Top 10 assuntos em aberto. Escolha um canal para filtrar.</p>
+    <div class="abas" role="group" aria-label="Filtrar por canal" id="abasAssuntos"></div>
+    <div class="area-grafico" style="height:360px"><canvas id="graficoAssuntos" role="img" aria-label="Assuntos mais frequentes no backlog"></canvas></div>
+  </div>
+</section>
+
+<footer>
+  <span>Gerado automaticamente em {{ gerado_em }} · dados fictícios para demonstração</span>
+  <span>Conciliação: anterior real {{ fmt(m.backlog_ontem) }} · calculado {{ fmt(m.backlog_ontem_calculado) }}</span>
+</footer>
+</div>
+
+<script>
+const DADOS = {{ dados_js | safe }};
+
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const fmt = v => v.toLocaleString('pt-BR');
+Chart.defaults.font.family = '"IBM Plex Sans", system-ui, sans-serif';
+Chart.defaults.font.size = 12;
+Chart.defaults.color = css('--text-secondary');
+Chart.defaults.animation = false;
+const tooltip = {
+  backgroundColor: css('--text-primary'), titleColor: css('--surface-1'), bodyColor: css('--surface-1'),
+  padding: 10, cornerRadius: 6, boxPadding: 4, usePointStyle: true,
+  callbacks: { label: c => ` ${c.dataset.label}: ${fmt(c.parsed.x ?? c.parsed.y)}` }
+};
+const eixo = (extra = {}) => ({ grid: { color: css('--grid'), drawTicks: false }, border: { display: false }, ticks: { padding: 6 }, ...extra });
+
+// Entradas e fechados por canal (barras horizontais agrupadas)
+new Chart(document.getElementById('graficoCanais'), {
+  type: 'bar',
+  data: {
+    labels: DADOS.canais.map(c => c.canal),
+    datasets: [
+      { label: 'Entradas', data: DADOS.canais.map(c => c.entradas), backgroundColor: css('--series-1') },
+      { label: 'Fechados', data: DADOS.canais.map(c => c.fechados), backgroundColor: css('--series-2') },
+    ].map(d => ({ ...d, borderRadius: 4, borderSkipped: 'start', borderColor: css('--surface-1'), borderWidth: 1, barPercentage: .9, categoryPercentage: .7 }))
+  },
+  options: {
+    indexAxis: 'y', maintainAspectRatio: false, interaction: { mode: 'index', axis: 'y', intersect: false },
+    plugins: { legend: { display: false }, tooltip },
+    scales: { x: eixo({ beginAtZero: true }), y: eixo({ grid: { display: false } }) }
+  }
+});
+
+// Tendência
+const rotuloDia = iso => { const [a, m, d] = iso.split('-'); return `${d}/${m}`; };
+const linha = (label, chave, cor) => ({
+  label, data: DADOS.serie.map(p => p[chave]), borderColor: cor, backgroundColor: cor,
+  borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, pointHoverBorderWidth: 2, pointHoverBorderColor: css('--surface-1'), tension: .25
+});
+new Chart(document.getElementById('graficoTendencia'), {
+  type: 'line',
+  data: { labels: DADOS.serie.map(p => rotuloDia(p.data)),
+          datasets: [linha('Entradas', 'entradas', css('--series-1')), linha('Fechados', 'fechados', css('--series-2'))] },
+  options: {
+    maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { display: false }, tooltip },
+    scales: { x: eixo({ grid: { display: false }, ticks: { maxTicksLimit: 8, padding: 6 } }), y: eixo({ beginAtZero: true }) }
+  }
+});
+
+// Sparkline do backlog (sem eixos: o número grande já dá a escala)
+new Chart(document.getElementById('sparkBacklog'), {
+  type: 'line',
+  data: { labels: DADOS.serie.map(p => rotuloDia(p.data)),
+          datasets: [{ ...linha('Backlog', 'backlog', css('--accent')), pointRadius: ctx => ctx.dataIndex === DADOS.serie.length - 1 ? 3 : 0 }] },
+  options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip },
+             scales: { x: { display: false }, y: { display: false } } }
+});
+
+// Tempo em aberto (rampa sequencial de um só tom: mais intenso = há mais tempo aguardando)
+new Chart(document.getElementById('graficoIdade'), {
+  type: 'bar',
+  data: { labels: DADOS.idade.map(f => f[0]),
+          datasets: [{ label: 'Casos', data: DADOS.idade.map(f => f[1]),
+                       backgroundColor: ['--seq-1', '--seq-2', '--seq-3', '--seq-4'].map(css),
+                       borderRadius: 4, borderSkipped: 'start', barPercentage: .75 }] },
+  options: { maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip },
+             scales: { x: eixo({ grid: { display: false } }), y: eixo({ beginAtZero: true }) } }
+});
+
+// Assuntos, com filtro por canal
+const graficoAssuntos = new Chart(document.getElementById('graficoAssuntos'), {
+  type: 'bar',
+  data: { labels: [], datasets: [{ label: 'Casos', data: [], backgroundColor: css('--series-1'), borderRadius: 4, borderSkipped: 'start', barPercentage: .8 }] },
+  options: { indexAxis: 'y', maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip },
+             scales: { x: eixo({ beginAtZero: true, ticks: { precision: 0, padding: 6 } }), y: eixo({ grid: { display: false } }) } }
+});
+const abas = document.getElementById('abasAssuntos');
+function mostrarAssuntos(canal) {
+  const itens = DADOS.assuntos[canal] || [];
+  graficoAssuntos.data.labels = itens.map(i => i[0]);
+  graficoAssuntos.data.datasets[0].data = itens.map(i => i[1]);
+  graficoAssuntos.update();
+  abas.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', b.dataset.canal === canal));
+}
+Object.keys(DADOS.assuntos).forEach(canal => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.canal = canal; b.textContent = canal === 'TODOS' ? 'Todos os canais' : canal;
+  b.onclick = () => mostrarAssuntos(canal);
+  abas.appendChild(b);
+});
+mostrarAssuntos('TODOS');
+</script>
+</body>
+</html>

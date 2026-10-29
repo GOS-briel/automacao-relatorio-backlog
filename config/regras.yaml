@@ -1,0 +1,60 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Regras de negócio do relatório de backlog.
+#
+# Tudo que muda com frequência (quais casos entram, como cada caso é atribuído
+# a um canal) fica AQUI, fora do código. Mudou uma regra? Edita este arquivo,
+# não o Python.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Nome das colunas no export do CRM.
+colunas:
+  numero: "Número do caso"
+  status: "Status"
+  tipo: "Tipo do caso"
+  origem: "Origem"
+  canal: "Canal de entrada"
+  nivel: "Nível"
+  assunto: "Assunto"
+  abertura: "Data de abertura"
+  fechamento: "Data de fechamento"
+
+# Texto que identifica a linha de cabeçalho real. O export traz um número
+# variável de linhas de filtro no topo; o leitor procura esta célula.
+marcador_cabecalho: "Número do caso"
+
+# Quais casos entram na conta.
+filtros:
+  excluir_status: ["Solicitação"]
+  tipos_validos: ["Reclamação", "Reclamação reaberta", "Recurso"]
+
+# Classificação de canal: a PRIMEIRA regra que casar vence (a ordem importa).
+# Cada condição aceita um valor ou uma lista de valores. A comparação ignora
+# maiúsculas, acentos e espaços extras.
+canais:
+  - nome: "REGULADOR N2"
+    quando: { origem: "ÓRGÃO REGULADOR", nivel: "2º NÍVEL" }
+  - nome: "REGULADOR N3"
+    quando: { origem: "ÓRGÃO REGULADOR", nivel: "3º NÍVEL" }
+  - nome: "PLATAFORMA PÚBLICA"
+    quando: { canal: "PLATAFORMA PÚBLICA DE RECLAMAÇÕES" }
+  - nome: "DEFESA DO CONSUMIDOR"
+    quando: { origem: "DEFESA DO CONSUMIDOR" }
+  - nome: "TELEFONE"
+    quando: { canal: ["CENTRAL TELEFÔNICA", "CALL CENTER", "CALL-CENTER"] }
+  - nome: "E-MAIL"
+    quando: { canal: ["E-MAIL", "EMAIL"] }
+  - nome: "CHAT"
+    quando: { canal: ["CHAT", "WHATSAPP"] }
+  - nome: "REDES SOCIAIS"
+    quando: { canal: "REDES SOCIAIS" }
+  - nome: "ÁREA INTERNA"
+    quando: { canal: "ÁREA INTERNA" }
+
+canal_padrao: "OUTROS"
+
+# Limites usados pela validação para destacar o que merece atenção.
+alertas:
+  variacao_backlog_pct: 10        # variação diária do backlog acima disso vira destaque
+  divergencia_conciliacao_pct: 2  # diferença entre backlog de ontem real e o calculado
+  idade_critica_dias: 30          # idade a partir da qual um caso é considerado crítico
+  pct_casos_criticos: 5           # destaca quando os casos críticos passam deste % do backlog
