@@ -1,0 +1,3 @@
+# Arquivo de exemplo gerado e biblioteca de terceiros: não contam na linguagem do repositório
+exemplo/** linguist-documentation
+relatorio_backlog/templates/vendor/** linguist-vendored
